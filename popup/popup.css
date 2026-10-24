@@ -78,6 +78,18 @@ h1 { font-size: 14px; font-weight: 600; flex: 1; }
 
 main { padding: 6px 8px; min-height: 60px; }
 
+#aviso-permiso {
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border: 1px solid #6b4a12;
+  background: #2a2213;
+  color: #f5c26b;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+#aviso-permiso code { font-size: 10px; }
+
 #estado-tab {
   padding: 6px 14px 0;
   border-top: 1px solid var(--borde);

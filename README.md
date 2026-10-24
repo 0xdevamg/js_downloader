@@ -12,6 +12,9 @@ desde un repositorio de GitHub.
    (`downloader_addon`).
 4. Fija la extensión a la barra con el icono de rombo de la barra de
    herramientas.
+5. **Importante:** en `brave://extensions`, entra en Media Downloader y activa
+   el interruptor **«Permitir scripts de usuario»**. Sin esto la inyección no
+   funciona (la GUI lo avisará con un banner naranja).
 
 ## Uso
 
@@ -89,12 +92,24 @@ sitio conserva el código que ya tenía y muestra el error.
 
 ```
 manifest.json        Configuración MV3 de la extensión
-background.js        Service worker: inyección y descargas
+background.js        Service worker: registro de user scripts y descargas
 src/sites.js         Registro de sitios soportados
 src/storage.js       Lectura/escritura de chrome.storage.local
 src/github.js        Descarga de scripts desde GitHub
-src/inject.js        Puente GM_* + ejecución del código en la página
+src/shim.js          Sustitutos GM_* insertados antes de cada script
 popup/               GUI (HTML/CSS/JS)
 scripts/             Scripts por sitio (onlyfans.js)
+test/                Página de prueba local
 icons/               Iconos de la extensión
 ```
+
+## Cómo funciona la inyección
+
+Los sitios se registran con la API `chrome.userScripts` (la misma que usan
+Tampermonkey y Violentmonkey en MV3): el código guardado en storage se
+incrusta tal cual en el user script — sin `eval` ni `new Function`, que la CSP
+de las extensiones MV3 prohíbe. El navegador inyecta cada script
+automáticamente en las cargas de página que coinciden con sus dominios. Antes
+del código se inserta un shim que proporciona `GM_setClipboard`,
+`GM_download` (vía `chrome.downloads` en el service worker) y
+`GM_registerMenuCommand` (sin efecto).

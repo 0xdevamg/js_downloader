@@ -3,7 +3,8 @@
   "name": "Media Downloader",
   "version": "1.0.0",
   "description": "Inyecta scripts de usuario en los sitios que tú eliges. Scripts actualizables desde GitHub.",
-  "permissions": ["storage", "scripting", "downloads", "webNavigation"],
+  "permissions": ["storage", "downloads", "userScripts"],
+  "minimum_chrome_version": "120",
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",

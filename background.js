@@ -1,76 +1,76 @@
 import { inicializarSiHaceFalta, obtenerSitios } from './src/storage.js';
-import { ejecutarScriptUsuario } from './src/inject.js';
+import { CODIGO_SHIM } from './src/shim.js';
 
-// Clave `${tabId}:${frameId}` -> última URL inyectada, para no inyectar dos veces
-const INYECTADOS = new Map();
-// tabId -> { sitio, resultado, url }: último intento de inyección, para la GUI
+// tabId -> { sitio, resultado, url }: último aviso del shim, para la GUI
 const ESTADO_INYECCION = new Map();
 
-function coincideHost(url, hosts) {
-  let hostname;
+// Los user scripts se registran una vez y el navegador los inyecta solo en
+// cada carga de página que coincida (como Tampermonkey). Sincronizar el
+// registro con lo que hay guardado en storage.
+async function sincronizarRegistros() {
   try {
-    hostname = new URL(url).hostname;
-  } catch {
-    return false;
+    // Permite que el código inyectado use chrome.runtime.sendMessage (GM_download)
+    await chrome.userScripts.configureWorld({ messaging: true });
+
+    const sitios = await obtenerSitios();
+    const actuales = await chrome.userScripts.getScripts({});
+    const porId = new Map(actuales.map((s) => [s.id, s]));
+    const deseados = [];
+
+    for (const sitio of sitios) {
+      if (sitio.enabled === false || !sitio.codigo) continue;
+      deseados.push({
+        id: sitio.id,
+        matches: sitio.hosts.map((h) => `*://*.${h}/*`),
+        js: [{ code: CODIGO_SHIM }, { code: codigoDeSitio(sitio) }],
+        world: 'USER_SCRIPT',
+        runAt: 'document_idle',
+        persistAcrossSessions: true
+      });
+    }
+
+    const deseadosIds = new Set(deseados.map((d) => d.id));
+    const obsoletos = actuales.map((s) => s.id).filter((id) => !deseadosIds.has(id));
+    if (obsoletos.length) await chrome.userScripts.unregister(obsoletos);
+
+    for (const script of deseados) {
+      if (porId.has(script.id)) {
+        await chrome.userScripts.update([script]);
+      } else {
+        await chrome.userScripts.register([script]);
+      }
+    }
+    await chrome.storage.local.set({ falta_permiso: false });
+  } catch (e) {
+    // Casi siempre: el interruptor "Permitir scripts de usuario" está apagado
+    await chrome.storage.local.set({ falta_permiso: true, error_permiso: String(e && e.message || e) });
+    console.warn('[Media Downloader] No se pudieron registrar los user scripts:', e.message);
   }
-  return hosts.some((h) => hostname === h || hostname.endsWith('.' + h));
 }
 
-async function inyectar(tabId, url) {
-  const sitios = await obtenerSitios();
-  const sitio = sitios.find((s) => s.enabled !== false && s.codigo && coincideHost(url, s.hosts));
-  if (!sitio) {
-    ESTADO_INYECCION.set(tabId, { sitio: null, resultado: 'sin-coincidencia', url });
+// El código del sitio va incrustado tal cual (sin eval): el navegador ejecuta
+// el archivo del user script directamente. El try/catch reporta el resultado
+// a la GUI. Como el código es JS válido, las llaves quedan balanceadas.
+function codigoDeSitio(sitio) {
+  const id = JSON.stringify(sitio.id);
+  return [
+    'try {',
+    sitio.codigo,
+    '  chrome.runtime.sendMessage({ tipo: \'inyectado\', sitio: ' + id + ', resultado: \'ok\' });',
+    '} catch (e) {',
+    '  chrome.runtime.sendMessage({ tipo: \'inyectado\', sitio: ' + id + ', resultado: \'error: \' + (e && e.message ? e.message : String(e)) });',
+    '}'
+  ].join('\n');
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.tipo === 'inyectado') {
+    if (sender.tab) {
+      ESTADO_INYECCION.set(sender.tab.id, { sitio: msg.sitio, resultado: msg.resultado, url: sender.tab.url });
+    }
     return;
   }
-  const clave = `${tabId}:0`;
-  if (INYECTADOS.get(clave) === url) return;
 
-  try {
-    const [res] = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: ejecutarScriptUsuario,
-      args: [sitio.codigo, sitio.id]
-    });
-    INYECTADOS.set(clave, url);
-    ESTADO_INYECCION.set(tabId, {
-      sitio: sitio.id,
-      resultado: res && res.result ? String(res.result) : 'sin-resultado',
-      url
-    });
-    if (res && res.result && String(res.result).startsWith('error:')) {
-      console.warn(`[Media Downloader] ${sitio.id}:`, res.result);
-    }
-  } catch (e) {
-    // La pestaña puede haberse cerrado o estar en página restringida (chrome://)
-    ESTADO_INYECCION.set(tabId, { sitio: sitio.id, resultado: 'error: ' + e.message, url });
-    console.warn('[Media Downloader] No se pudo inyectar:', e.message);
-  }
-}
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) inyectar(tabId, tab.url);
-});
-
-// Navegaciones internas de SPAs (pushState): OnlyFans funciona así
-chrome.webNavigation.onHistoryStateUpdated.addListener((detalles) => {
-  if (detalles.frameId === 0) inyectar(detalles.tabId, detalles.url);
-});
-
-// Una recarga de página debe permitir inyectar de nuevo aunque la URL no cambie
-chrome.webNavigation.onCommitted.addListener((detalles) => {
-  if (detalles.frameId === 0) INYECTADOS.delete(`${detalles.tabId}:0`);
-});
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  INYECTADOS.delete(`${tabId}:0`);
-  ESTADO_INYECCION.delete(tabId);
-});
-
-chrome.runtime.onInstalled.addListener(inicializarSiHaceFalta);
-chrome.runtime.onStartup.addListener(inicializarSiHaceFalta);
-
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.tipo === 'gm_download') {
     chrome.downloads.download(
       { url: msg.url, filename: msg.nombre, saveAs: false, conflictAction: 'uniquify' },
@@ -89,13 +89,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse(ESTADO_INYECCION.get(msg.tabId) || null);
     return;
   }
+});
 
-  if (msg.tipo === 'reinyectar') {
-    INYECTADOS.delete(`${msg.tabId}:0`);
-    chrome.tabs.get(msg.tabId, (tab) => {
-      if (chrome.runtime.lastError || !tab || !tab.url) return sendResponse({ ok: false });
-      inyectar(tab.id, tab.url).then(() => sendResponse({ ok: true }));
-    });
-    return true;
-  }
+// Cualquier cambio en los sitios (interruptor, actualización desde GitHub)
+// resincroniza el registro de user scripts
+chrome.storage.onChanged.addListener((cambios, area) => {
+  if (area === 'local' && cambios.sitios) sincronizarRegistros();
+});
+
+chrome.runtime.onInstalled.addListener(() => inicializarSiHaceFalta().then(sincronizarRegistros));
+chrome.runtime.onStartup.addListener(() => inicializarSiHaceFalta().then(sincronizarRegistros));
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  ESTADO_INYECCION.delete(tabId);
 });

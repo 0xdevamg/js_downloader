@@ -22,6 +22,10 @@ async function pestañaActiva() {
 
 // Muestra si el script se inyectó en la pestaña activa del navegador
 async function mostrarEstadoPestaña() {
+  const aviso = $('#aviso-permiso');
+  const { falta_permiso: faltaPermiso } = await chrome.storage.local.get('falta_permiso');
+  aviso.hidden = !faltaPermiso;
+
   const el = $('#estado-tab');
   const tab = await pestañaActiva();
   if (!tab || !tab.url || !/^https?:/.test(tab.url)) {
@@ -31,15 +35,15 @@ async function mostrarEstadoPestaña() {
   const estado = await chrome.runtime.sendMessage({ tipo: 'estado', tabId: tab.id });
   el.hidden = false;
   el.className = 'pista';
-  if (!estado) {
-    el.textContent = 'Esta pestaña: el script aún no se ha inyectado (recarga la página).';
-  } else if (estado.resultado === 'sin-coincidencia') {
-    el.textContent = 'Esta pestaña: la URL no pertenece a ningún sitio activado.';
-  } else if (estado.resultado === 'ok' || estado.resultado === 'ya-inyectado') {
-    el.textContent = `Esta pestaña: script inyectado ✓ (recuerda: el botón solo aparece en el visor de imágenes o con video de enlace directo).`;
+  if (faltaPermiso) {
+    el.textContent = 'Sin inyección hasta que actives «Permitir scripts de usuario».';
+  } else if (!estado) {
+    el.textContent = 'Esta pestaña: sin inyección — recarga la página para aplicarlo.';
+  } else if (estado.resultado === 'ok') {
+    el.textContent = 'Esta pestaña: script inyectado ✓ (el botón solo aparece en el visor de imágenes o con video de enlace directo).';
     el.classList.add('ok');
   } else {
-    el.textContent = `Esta pestaña: error al inyectar — ${estado.resultado}`;
+    el.textContent = `Esta pestaña: error — ${estado.resultado}`;
     el.classList.add('error');
   }
 }
@@ -86,9 +90,7 @@ function dibujarSitios(sitios) {
     casilla.checked = sitio.enabled !== false;
     casilla.addEventListener('change', async () => {
       sitio.enabled = casilla.checked;
-      await guardarSitios(sitios);
-      const tab = await pestañaActiva();
-      if (tab) chrome.runtime.sendMessage({ tipo: 'reinyectar', tabId: tab.id });
+      await guardarSitios(sitios); // el background resincroniza los user scripts
       mostrarEstadoPestaña();
     });
     const pista = document.createElement('span');
@@ -157,7 +159,10 @@ $('#btn-actualizar').addEventListener('click', async () => {
 
   await cargar();
   const tab = await pestañaActiva();
-  if (tab) chrome.runtime.sendMessage({ tipo: 'reinyectar', tabId: tab.id });
+  if (tab) {
+    // El nuevo código entra al recargar la página (los user scripts ya están resincronizados)
+    chrome.tabs.reload(tab.id);
+  }
   mostrarEstadoPestaña();
 });
 
