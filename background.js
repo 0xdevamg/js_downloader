@@ -3,6 +3,8 @@ import { ejecutarScriptUsuario } from './src/inject.js';
 
 // Clave `${tabId}:${frameId}` -> última URL inyectada, para no inyectar dos veces
 const INYECTADOS = new Map();
+// tabId -> { sitio, resultado, url }: último intento de inyección, para la GUI
+const ESTADO_INYECCION = new Map();
 
 function coincideHost(url, hosts) {
   let hostname;
@@ -17,7 +19,10 @@ function coincideHost(url, hosts) {
 async function inyectar(tabId, url) {
   const sitios = await obtenerSitios();
   const sitio = sitios.find((s) => s.enabled !== false && s.codigo && coincideHost(url, s.hosts));
-  if (!sitio) return;
+  if (!sitio) {
+    ESTADO_INYECCION.set(tabId, { sitio: null, resultado: 'sin-coincidencia', url });
+    return;
+  }
   const clave = `${tabId}:0`;
   if (INYECTADOS.get(clave) === url) return;
 
@@ -28,11 +33,17 @@ async function inyectar(tabId, url) {
       args: [sitio.codigo, sitio.id]
     });
     INYECTADOS.set(clave, url);
+    ESTADO_INYECCION.set(tabId, {
+      sitio: sitio.id,
+      resultado: res && res.result ? String(res.result) : 'sin-resultado',
+      url
+    });
     if (res && res.result && String(res.result).startsWith('error:')) {
       console.warn(`[Media Downloader] ${sitio.id}:`, res.result);
     }
   } catch (e) {
     // La pestaña puede haberse cerrado o estar en página restringida (chrome://)
+    ESTADO_INYECCION.set(tabId, { sitio: sitio.id, resultado: 'error: ' + e.message, url });
     console.warn('[Media Downloader] No se pudo inyectar:', e.message);
   }
 }
@@ -53,6 +64,7 @@ chrome.webNavigation.onCommitted.addListener((detalles) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   INYECTADOS.delete(`${tabId}:0`);
+  ESTADO_INYECCION.delete(tabId);
 });
 
 chrome.runtime.onInstalled.addListener(inicializarSiHaceFalta);
@@ -71,6 +83,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
     );
     return true; // respuesta asíncrona
+  }
+
+  if (msg.tipo === 'estado') {
+    sendResponse(ESTADO_INYECCION.get(msg.tabId) || null);
+    return;
   }
 
   if (msg.tipo === 'reinyectar') {

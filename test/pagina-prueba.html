@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Página de prueba — Media Downloader</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; background: #14161a; color: #eee; max-width: 860px; margin: 0 auto; padding: 24px; }
+  .rejilla { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+  .rejilla img { width: 100%; border-radius: 8px; cursor: zoom-in; }
+  video { width: 100%; border-radius: 8px; }
+  code { background: #262a32; padding: 1px 6px; border-radius: 5px; }
+  /* Overlay que imita un visor de fotos (PhotoSwipe): capa fija a pantalla completa con una imagen grande */
+  #overlay {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.85); z-index: 100;
+  }
+  #overlay.abierto { display: flex; }
+  #overlay img { max-width: 92vw; max-height: 92vh; }
+</style>
+</head>
+<body>
+  <h1>Página de prueba — Media Downloader</h1>
+  <p>Abre esta página con la extensión activada y comprueba:</p>
+  <ol>
+    <li><strong>Botón de imagen</strong>: haz clic en una foto para abrirla en el visor (overlay). El botón circular de descarga debe aparecer abajo a la derecha. También puedes usar <code>Shift + clic</code> para copiar el enlace de cualquier imagen.</li>
+    <li><strong>Botón de video</strong>: el video de abajo usa un archivo <code>.mp4</code> con enlace directo, así que debe aparecer un botón sobre su esquina superior derecha.</li>
+  </ol>
+
+  <div class="rejilla" id="rejilla"></div>
+
+  <h2>Video con enlace directo</h2>
+  <video controls playsinline src="https://www.w3schools.com/html/mov_bbb.mp4"></video>
+  <p style="color:#9aa0a6">El video se carga desde Internet; si no hay conexión, este punto no se puede probar.</p>
+
+  <div id="overlay" role="dialog" aria-modal="true">
+    <img id="overlay-img" alt="">
+  </div>
+
+<script>
+  // Imágenes SVG generadas localmente para funcionar sin conexión
+  function svgData(color, n) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600">
+      <rect width="900" height="600" fill="${color}"/>
+      <text x="450" y="320" font-size="140" fill="#fff" text-anchor="middle" font-family="sans-serif">Foto ${n}</text>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+  }
+  const colores = ['#3b6fd4', '#22a06b', '#c2549a', '#d4a13b', '#8a5cd4', '#d45c3b'];
+  const rejilla = document.getElementById('rejilla');
+  const overlay = document.getElementById('overlay');
+  const overlayImg = document.getElementById('overlay-img');
+  colores.forEach((c, i) => {
+    const img = document.createElement('img');
+    img.src = svgData(c, i + 1);
+    img.alt = 'Foto de prueba ' + (i + 1);
+    img.addEventListener('click', () => {
+      overlayImg.src = img.src;
+      overlay.classList.add('abierto');
+    });
+    rejilla.appendChild(img);
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('abierto');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') overlay.classList.remove('abierto');
+  });
+</script>
+</body>
+</html>

@@ -30,6 +30,25 @@ una imagen; botones flotantes descargan la imagen del visor o el video). La
 extensión le proporciona los sustitutos necesarios de `GM_setClipboard`,
 `GM_download` y `GM_registerMenuCommand`, así que el código funciona tal cual.
 
+## Verificar que la inyección funciona
+
+El botón de descarga **no siempre está visible**: el de imagen solo aparece
+cuando hay un visor/overlay abierto (p. ej. al abrir una foto a pantalla
+completa) y el de video solo cuando el `<video>` tiene un enlace directo —
+los videos en streaming (`blob:`, como los de OnlyFans) se omiten a propósito
+porque no se pueden descargar así.
+
+Para comprobar la extensión sin depender de OnlyFans:
+
+1. Sirve la página de prueba: `python3 -m http.server 8899` en esta carpeta.
+2. Abre `http://localhost:8899/test/pagina-prueba.html` en Brave.
+3. Haz clic en una foto (se abre el visor → botón abajo a la derecha) o mira
+   el video (botón sobre su esquina superior derecha).
+
+La GUI también muestra el estado de la pestaña activa: "script inyectado ✓",
+"la URL no pertenece a ningún sitio activado" o el error concreto si la
+inyección falló.
+
 ## Actualización desde GitHub
 
 1. Abre la GUI y pulsa el icono de ⚙ **Ajustes**.

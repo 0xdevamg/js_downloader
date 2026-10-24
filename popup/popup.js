@@ -20,6 +20,30 @@ async function pestañaActiva() {
   return tab;
 }
 
+// Muestra si el script se inyectó en la pestaña activa del navegador
+async function mostrarEstadoPestaña() {
+  const el = $('#estado-tab');
+  const tab = await pestañaActiva();
+  if (!tab || !tab.url || !/^https?:/.test(tab.url)) {
+    el.hidden = true;
+    return;
+  }
+  const estado = await chrome.runtime.sendMessage({ tipo: 'estado', tabId: tab.id });
+  el.hidden = false;
+  el.className = 'pista';
+  if (!estado) {
+    el.textContent = 'Esta pestaña: el script aún no se ha inyectado (recarga la página).';
+  } else if (estado.resultado === 'sin-coincidencia') {
+    el.textContent = 'Esta pestaña: la URL no pertenece a ningún sitio activado.';
+  } else if (estado.resultado === 'ok' || estado.resultado === 'ya-inyectado') {
+    el.textContent = `Esta pestaña: script inyectado ✓ (recuerda: el botón solo aparece en el visor de imágenes o con video de enlace directo).`;
+    el.classList.add('ok');
+  } else {
+    el.textContent = `Esta pestaña: error al inyectar — ${estado.resultado}`;
+    el.classList.add('error');
+  }
+}
+
 function dibujarSitios(sitios) {
   const lista = $('#lista-sitios');
   lista.textContent = '';
@@ -65,6 +89,7 @@ function dibujarSitios(sitios) {
       await guardarSitios(sitios);
       const tab = await pestañaActiva();
       if (tab) chrome.runtime.sendMessage({ tipo: 'reinyectar', tabId: tab.id });
+      mostrarEstadoPestaña();
     });
     const pista = document.createElement('span');
     pista.className = 'pista-switch';
@@ -133,6 +158,7 @@ $('#btn-actualizar').addEventListener('click', async () => {
   await cargar();
   const tab = await pestañaActiva();
   if (tab) chrome.runtime.sendMessage({ tipo: 'reinyectar', tabId: tab.id });
+  mostrarEstadoPestaña();
 });
 
-cargar();
+cargar().then(mostrarEstadoPestaña);
