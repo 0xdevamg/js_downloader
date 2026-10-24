@@ -30,9 +30,14 @@ async function mostrarEstadoPestaña() {
   let { falta_permiso: faltaPermiso, error_permiso: errorPermiso } =
     await chrome.storage.local.get(['falta_permiso', 'error_permiso']);
   if (faltaPermiso) {
-    await chrome.runtime.sendMessage({ tipo: 'sincronizar' });
-    ({ falta_permiso: faltaPermiso, error_permiso: errorPermiso } =
-      await chrome.storage.local.get(['falta_permiso', 'error_permiso']));
+    try {
+      await chrome.runtime.sendMessage({ tipo: 'sincronizar' });
+      ({ falta_permiso: faltaPermiso, error_permiso: errorPermiso } =
+        await chrome.storage.local.get(['falta_permiso', 'error_permiso']));
+    } catch {
+      // El service worker viejo no conoce este mensaje: hará falta recargar
+      errorPermiso = 'El código de la extensión cambió: recárgala con el botón de abajo.';
+    }
   }
   aviso.hidden = !faltaPermiso;
   detalle.textContent = errorPermiso || '';
@@ -176,5 +181,7 @@ $('#btn-actualizar').addEventListener('click', async () => {
   }
   mostrarEstadoPestaña();
 });
+
+$('#btn-recargar-ext').addEventListener('click', () => chrome.runtime.reload());
 
 cargar().then(mostrarEstadoPestaña);
