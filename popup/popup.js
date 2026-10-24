@@ -23,8 +23,19 @@ async function pestañaActiva() {
 // Muestra si el script se inyectó en la pestaña activa del navegador
 async function mostrarEstadoPestaña() {
   const aviso = $('#aviso-permiso');
-  const { falta_permiso: faltaPermiso } = await chrome.storage.local.get('falta_permiso');
+  const detalle = $('#detalle-permiso');
+
+  // Si el aviso estaba activo, reintenta el registro: el usuario puede haber
+  // activado «Permitir scripts de usuario» desde la última comprobación
+  let { falta_permiso: faltaPermiso, error_permiso: errorPermiso } =
+    await chrome.storage.local.get(['falta_permiso', 'error_permiso']);
+  if (faltaPermiso) {
+    await chrome.runtime.sendMessage({ tipo: 'sincronizar' });
+    ({ falta_permiso: faltaPermiso, error_permiso: errorPermiso } =
+      await chrome.storage.local.get(['falta_permiso', 'error_permiso']));
+  }
   aviso.hidden = !faltaPermiso;
+  detalle.textContent = errorPermiso || '';
 
   const el = $('#estado-tab');
   const tab = await pestañaActiva();

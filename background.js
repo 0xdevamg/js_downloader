@@ -9,6 +9,9 @@ const ESTADO_INYECCION = new Map();
 // registro con lo que hay guardado en storage.
 async function sincronizarRegistros() {
   try {
+    if (!chrome.userScripts) {
+      throw new Error('La API userScripts no está disponible: activa «Permitir scripts de usuario» y recarga la extensión (⟳).');
+    }
     // Permite que el código inyectado use chrome.runtime.sendMessage (GM_download)
     await chrome.userScripts.configureWorld({ messaging: true });
 
@@ -41,6 +44,7 @@ async function sincronizarRegistros() {
       }
     }
     await chrome.storage.local.set({ falta_permiso: false });
+    await chrome.storage.local.remove('error_permiso');
   } catch (e) {
     // Casi siempre: el interruptor "Permitir scripts de usuario" está apagado
     await chrome.storage.local.set({ falta_permiso: true, error_permiso: String(e && e.message || e) });
@@ -82,6 +86,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
       }
     );
+    return true; // respuesta asíncrona
+  }
+
+  if (msg.tipo === 'sincronizar') {
+    sincronizarRegistros().then(() => sendResponse({ ok: true }));
     return true; // respuesta asíncrona
   }
 
